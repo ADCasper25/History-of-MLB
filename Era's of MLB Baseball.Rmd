@@ -1,0 +1,394 @@
+---
+title: 'The Evolution of Major League Baseball'
+author: "Alex Casper"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Setup, include=FALSE, warning=FALSE}
+library(tidyverse)
+library(gridExtra)
+library(ggrepel)
+library(readxl)
+
+Batting_Stats <- read.csv("Batting.csv")
+Pitching_Stats <- read.csv("Pitching.csv")
+Fielding_Stats <- read.csv("Fielding.csv")
+Salaries_Stats <- read.csv("Salaries.csv")
+Team_Stats <- read.csv("Teams.csv")
+Race_Stats <- read_xlsx("Race.xlsx")
+Salaries <- read_xlsx("Salaries.xlsx")
+Stolen_Bases <- read_xlsx("Stolen_Bases.xlsx")
+
+#Dead Ball (1901-19), Live Ball (1920-41), Integration (1942-60), Expansion (1961-76), Free Agent (1977-93), Steroid (1994-2005), Post Steroid (06-Present)
+```
+
+
+```{r, include=FALSE}
+#filter out anything before the dead ball era
+Batting_Stats <- Batting_Stats %>% filter(yearID > 1900)
+Pitching_Stats <- Pitching_Stats %>% filter(yearID > 1900)
+Team_Stats <- Team_Stats %>% filter(yearID > 1900)
+
+#group stats into different eras
+Batting_Stats$era <- cut(Batting_Stats$yearID,c(1900,1920,1942,1961,1977,1994,2004,2023), labels=c("Dead.Ball","Live.Ball","Integration","Expansion", "Free.Agent","Steroid","Post.Steriod" ))
+
+Pitching_Stats$era <- cut(Pitching_Stats$yearID,c(1900,1920,1942,1961,1977,1994,2004,2022), labels=c("Dead.Ball","Live.Ball","Integration","Expansion", "Free.Agent","Steroid","Post.Steriod" ))
+
+#add team games
+Batting_Stats <- Batting_Stats %>%
+                 left_join(Team_Stats %>% 
+                           select(teamID, yearID, G) %>% 
+                           rename(Team_G = G), 
+                           by = c("teamID", "yearID"))
+
+#filter out players who did not play in more than half of their teams game that year for simplicity
+Batting_Stats_Filtered <- Batting_Stats %>%
+                 filter(G / Team_G >= 0.5)
+#add batting average
+Batting_Stats_Filtered <- Batting_Stats_Filtered %>%
+                          mutate(BA = H / AB)
+```
+
+### **Dead Ball Era (1901-1919)**
+
+The Dead Ball Era marked a significant transformation in baseball, setting the foundation for the game as we recognize it today. This era derived its name from the unique style of play at the time. Unlike modern games where balls are frequently replaced, back then, a single ball was used extensively throughout the game, being hit repeatedly. This constant use caused the ball to wear down, becoming softer and more difficult to hit effectively. 
+
+During this time, two critical rules were introduced, further shaping the game. Firstly, the dimensions of home plate were altered. It changed from a twelve-square-inch base to the now-familiar five-sided, seventeen-inch plate. Secondly, fouled balls were counted as strikes for the batter. These changes posed significant new challenges for hitters. As a result, strikeouts reached unprecedented levels, even by today's standards, and there was a noticeable dip in batting averages, home runs, and overall offensive production.
+
+```{r Dead_Ball_era, fig.width= 12, echo=FALSE}
+# Filter Batting_Stats_Filtered to include only top 10 HR hitters each year
+top_HR_Batting_Stats <- Batting_Stats_Filtered %>% group_by(yearID) %>% top_n(10, HR)
+
+top_SO_Pitching_Stats <- Pitching_Stats %>% group_by(yearID) %>% top_n(10, SO)
+
+Batting <- ggplot(top_HR_Batting_Stats, aes(x = yearID, y = HR, color = era)) + 
+  geom_point() +
+  labs(title = "Home Runs over Time by Era",
+       x = "Year",
+       y = "Home Runs",
+       color = "Era") +
+  theme_minimal()
+
+Pitching <- ggplot(top_SO_Pitching_Stats, aes(x = yearID, y = SO, color = era)) + 
+  geom_point() +
+  labs(title = "Stikeouts by Pitchers over Time by Era",
+       x = "Year",
+       y = "Strikeouts by Pitchers",
+       color = "Era") +
+  theme_minimal()
+
+
+grid.arrange(Batting, Pitching, ncol = 2, widths = c(1,1))
+```
+
+The above illustration presents two scatter plots, depicting the trends in home runs and strikeouts across different baseball eras. Each plot point represents a player's home run tally (on the left) or a pitchers strikeout total (on the right) for that year, with each year contributing ten data points. These points correspond to the top ten players with the most home runs or the top ten pitchers with the highest number of strikeouts in that year. 
+
+From the plots, there is evident contrast in the number of home runs hit and pitcher's strikeouts during the Dead Ball Era compared to other periods. This surge is largely attributed to the two pivotal rule changes mentioned above. These modifications had a profound impact on the game, and visibly influenced player performance in this pitcher dominated era.
+
+### **Live Ball Era (1920-1941)**
+
+In the Live Ball Era the rules began to tighten, and even more format was added to the game of baseball. These rules came mostly at the expense of pitchers. First, spitball and emery balls were outlawed. Meaning you could no longer put saliva or other substances on the ball to make it move differently. An emery ball is when a pitcher scuffs the ball with either sandy paper or a rock to give it different aerodynamic properties, and this was also banned. Finally, the construction of the ball was changed to make it more 'live', hence the name of the era. This lead to an immediate increase in offensive production, especially when it came to home runs. Immediately following the change of the ball Babe Ruth, a hall of fame hitter, went on to hit 59 home runs 1921.
+
+The spike in home runs led to an increase of interest in the sport, drawing larger crowds to games and boosting Major League Baseball's revenue. In response to this growing enthusiasm, the league made another change to how the baseball was made. In 1925, they created and implemented an even more 'live' ball. This new ball was made with a cushioned cork center, and made for even more offensive production.
+
+```{r Live_Ball_Era, fig.height= 8, fig.width= 12, echo=FALSE}
+# Split the dataset into three subsets
+dead_ball_era <- Team_Stats %>% filter(yearID < 1920)
+live_ball_era <- Team_Stats %>% filter(yearID >= 1920 & yearID < 1925)
+cushioned_cork_ball_era <- Team_Stats %>% filter(yearID >= 1925, yearID <= 1941)
+
+# Calculate average HR per team per year for all subsets
+avg_hr_dead_ball <- dead_ball_era %>% group_by(yearID) %>% summarize(avg_HR = mean(HR))
+avg_hr_live_ball <- live_ball_era %>% group_by(yearID) %>% summarize(avg_HR = mean(HR))
+avg_hr_cushioned_cork_ball <- cushioned_cork_ball_era %>% group_by(yearID) %>% summarize(avg_HR = mean(HR))
+
+# Add an identifier column to each dataset
+avg_hr_dead_ball <- avg_hr_dead_ball %>% mutate(Period = "Dead Ball Era")
+avg_hr_live_ball <- avg_hr_live_ball %>% mutate(Period = "Live Ball")
+avg_hr_cushioned_cork_ball <- avg_hr_cushioned_cork_ball %>% mutate(Period = "Cushioned Cork Ball")
+
+# Combine the datasets
+combined_avg_hr <- bind_rows(avg_hr_dead_ball, avg_hr_live_ball, avg_hr_cushioned_cork_ball)
+
+# Create the bar chart with conditional labels
+ggplot(combined_avg_hr, aes(x = yearID, y = avg_HR, fill = Period)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  scale_fill_manual(values = c("Dead Ball Era" = "lightskyblue4", "Live Ball" = "darkseagreen3", "Cushioned Cork Ball" = "coral3")) +
+  labs(title = "Average Home Runs per Team per Year",
+       x = "Year",
+       y = "Average Home Runs",
+       fill = "Period") +
+  theme_minimal() +
+  theme(legend.position = "right")
+```
+
+The bar chart above clearly demonstrates a marked increase in home runs after 1920, with another significant rise post-1925. The shift in the chart's color from blue to green indicates the transition from the dead ball era to the introduction of the first 'live ball' in 1921. The jump in 1921 is then followed by  another notable increase in 1926, coinciding with the introduction of the cushioned cork center ball. 
+
+Immediately following the change to the old live ball, Babe Ruth would go on to hit 60 home runs in the 1927 season, setting a record that would stand for nearly forty years. The chart below, showcasing home run leaders throughout the live ball era, shows a continued trend of high number of home runs thereafter the introduction of the cushioned cork center.
+
+```{r Live_Ball_Era_2, echo=FALSE, fig.height= 8, fig.width= 12}
+top_HR_Hitters <- Batting_Stats_Filtered %>% group_by(yearID) %>% top_n(1, HR)
+
+before_1925_HR_Leaders <- top_HR_Hitters %>% filter(yearID < 1925)
+after_1925_HR_Leaders <- top_HR_Hitters %>% filter(yearID >= 1925 & yearID < 1942)
+
+# Combine the data sets
+combined_HR_Leaders <- bind_rows(before_1925_HR_Leaders, after_1925_HR_Leaders)
+
+ggplot(combined_HR_Leaders, aes(x = yearID, y = HR)) +
+  geom_line(linewidth = 2, color = "black") +
+  geom_point(size = 4, color = "black") +
+  annotate("text", x = 1921, y = 59, label = "Babe Ruth", vjust = -1) +
+  annotate("text", x = 1927, y = 60, label = "Babe Ruth", vjust = -1) +
+  labs(title = "Home Runs Leaders in Dead Ball Era to Live Ball Era",
+       x = "Year",
+       y = "Home Runs") +
+  theme_minimal()
+
+```
+
+### **Integration Era (1942-1960)**
+
+The Integration Era was marked by the breaking of the color barrier in Major League Baseball. In 1947, Jackie Robinson made history by becoming the first African American player in the league. However, before Robinson's debut happened, the fighting of World War II had begun for the US in December of 1941 following the attack on Pearl Harbor. Many top-tier players were drafted into military service shortly after. This significant change led to an influx of new players who had to quickly fill the void left by the veteran players. As a result, the overall quality of of play, as evidenced by the scatter plot below, experienced a noticeable decline. The data shows that batting averages dipped during the war years (represented by the two black lines). There was a modest recovery post-war, but these statistics never quite reached the heights of the pre-war Live Ball era.
+
+```{r Integration_ERA, echo=FALSE, fig.width= 12}
+# Preparing the dataset
+Batting_Stats_Filtered <- Batting_Stats_Filtered %>% filter(AB >= 50)
+
+Batting_Stats_Filtered_new <- Batting_Stats_Filtered %>% filter(yearID >= 1920, yearID < 1961)
+
+# Calculate the average batting average per year
+avg_BA_per_year <- Batting_Stats_Filtered %>%
+                   group_by(yearID) %>%
+                   summarize(mean_BA = mean(BA, na.rm = TRUE)) %>%
+                   filter(yearID %in% unique(Batting_Stats_Filtered_new$yearID))  # Only consider years in the filtered data
+
+# Create the line plot
+ggplot(avg_BA_per_year, aes(x = yearID, y = mean_BA)) +
+  geom_line(color = "darkorchid", linewidth = 2) +
+  geom_vline(xintercept = 1940, linetype="dashed", color = "black", linewidth = 1) +
+  geom_vline(xintercept = 1945, linetype="dashed", color = "black", linewidth = 1) +
+  labs(title = "Average Batting Average per Year (Live Ball to Integration Era)", 
+       x = "Year", 
+       y = "Average Batting Average") +
+  theme_minimal()
+
+```
+
+As demonstrated earlier, the number of home runs hit during the integration period remained high, matching the levels of the live ball era, and people loved it. Some players started to prioritize home runs over other statistics and became focused on bat speed. This shift in focus led to a trend of using lighter bats. For context, in the 1920s, Babe Ruth famously used a 54-ounce bat. In contrast, players in the integration period began using bats as light as 30 ounces, reflecting a significant change in batting strategy.
+
+On top of home runs, Major League Baseball discovered that integrating the sport added more excitement. This change, allowed players of all races to showcase their talents. It made baseball more thrilling and attracted attention from diverse racial groups, most notably African American and Latino players. Teams quickly started to recruit and sign non-white players, leading to a growth in the sports popularity. The data below illustrates how baseball has grown and evolved since the color barrier was broken.
+
+```{r Integration_ERA2, echo=FALSE, fig.height= 8, fig.width= 12}
+ggplot(Race_Stats, aes(x = Year)) +
+  geom_line(aes(y = White, color = "White"), linewidth = 2) +
+  geom_line(aes(y = African.American, color = "African-American"), linewidth = 2) +
+  geom_line(aes(y = Latino, color = "Latino"), linewidth = 2) +
+  labs(title = "Racial Composition Trends in MLB (1947-2016)", x = "Year", y = "Percentage of Race") +
+  scale_color_manual(values = c("White" = "blue", "African-American" = "red", "Latino" = "green")) +
+  theme_minimal()
+
+```
+
+
+### **Expansion Era (1961-1976)**
+
+The Expansion Era in Major League Baseball, a term derived from the league's growth during this period, was characterized by both an increase in the number of teams and an expansion into new locations. Spanning from 1961 to 1976, the MLB expanded from 16 to 24 teams. In addition to this growth, a significant rule change was implemented in 1963, which involved expanding the strike zone. Originally defined as the area from the batter's armpits to his knees, the zone was enlarged to extend from the shoulders to the knees. This adjustment had a profound impact on hitters, leading to an immediate decrease in offensive output. There were noticeable declines in batting averages, home runs, and overall runs per game. Conversely, pitchers began to record strikeouts at a rate comparable to that of the dead-ball era, underscoring their dominance during this time. The year 1968 stood out in this era and was dubbed "the year of the pitcher" due to its being the lowest offensive producing season by hitters since the dead-ball era. Pitchers experienced a level of success not seen since before the 1920s.
+
+```{r Expansion_ERA, echo=FALSE, fig.height= 8, fig.width= 12}
+total_strikeouts_by_year <- Pitching_Stats %>% group_by(yearID) %>% summarize(total_SO = sum(SO, na.rm = TRUE))
+
+filtered_strikeouts <- total_strikeouts_by_year %>%
+                       filter(yearID >= 1955 & yearID <= 1976) %>%
+                       mutate(color_group = ifelse(yearID >= 1962 & yearID <= 1968, "New Strikezone", "Old Strikezone"))
+
+# Create the bar chart
+ggplot(filtered_strikeouts, aes(x = yearID, y = total_SO, fill = color_group)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("New Strikezone" = "orangered", "Old Strikezone" = "navyblue")) +
+  labs(title = "Total MLB Strikeouts (1961-1976)",
+       x = "Year",
+       y = "Total Strikeouts",
+       fill = "Year Group") +
+  theme_minimal() 
+```
+
+It was in 1969, immediately following what was historically the lowest offensive season, that Major League Baseball decided to implement changes. The league reverted the strike zone to its previous dimensions, spanning only from the armpits to the knees of the batter. Additionally, the slope of the pitcher's mound was taken down five inches. The reason for this was because pitchers were now more on level with the hitters, so instead of the pitch coming from a downward angle it was more of a straight angle. 
+
+As shown above, even after these rule changes, strikeouts stayed high. In a further effort to boost offensive production, MLB introduced the designated hitter (DH) role. This new position would play no defense at all. The designated hitter's sole responsibility was to bat in place of the pitcher. This change was motivated by the recognition that pitchers generally had poorer batting skills compared to other players, contributing to the diminished offensive output from teams throughout the previous decade. The DH was only implemented exclusively in the American League, one of the two leagues in MLB. It's evident that batting averages increased significantly following this change and continued to remain high in years following.
+
+```{r Expansion_ERA2, echo=FALSE, fig.height= 8, fig.width= 12, warning=FALSE}
+batting_average_by_year_AL <- Batting_Stats %>%
+                              filter(lgID == "AL") %>%
+                              group_by(yearID) %>%
+                              summarize(total_H = sum(H, na.rm = TRUE),
+                                        total_AB = sum(AB, na.rm = TRUE)) %>%
+                              mutate(BA = total_H / total_AB)
+
+filtered_BA <- batting_average_by_year_AL %>%
+               filter(yearID >= 1955 & yearID <= 1980) %>%
+               mutate(color_group = ifelse(yearID >= 1973, "Implementation of DH", "No DH"))
+
+# Create the line plot with color mapping
+ggplot(filtered_BA, aes(x = yearID, y = BA, color = color_group)) +
+  geom_segment(aes(x = 1972, y = filtered_BA %>% filter(yearID == 1972) %>% pull(BA), 
+               xend = 1973, yend = filtered_BA %>% filter(yearID == 1973) %>% pull(BA)), 
+               color = "darkgreen", size = 2) +
+  geom_line(linewidth = 2) +
+  geom_point(size = 4) +
+  scale_color_manual(values = c("No DH" = "darkgreen", "Implementation of DH" = "darkorange")) +
+  labs(title = "MLB Batting Average in AL (1955-1980)",
+       x = "Year",
+       y = "Batting Average",
+       color = "Year Group") +
+  theme_minimal() +
+  theme(legend.position = "right")
+```
+
+
+### **Free Agent Era (1977-1993)**
+
+The Free Agent Era marked a huge financial turning point in Major League Baseball. Free agency is a cornerstone in the sport today that originated in 1976. It was a significant shift form the era when players had limited mobility between teams. The catalyst for this change was a 1975 ruling by independent arbitrator Peter Seitz, allowing players Andy Messersmith and Dave McNally to become free agents after both played a season without signed contracts.
+
+This decision led to concerns among team owners about potential instability from widespread free agency. There was a compromise that established a system where players can become free agents after their contracts expired and they had at least six years of major league service. 
+
+```{r Free_Agent, echo=FALSE, fig.height= 8, fig.width= 12}
+Salaries_Filtered <- Salaries %>% filter(Year >= 1960, Year <= 1993)
+
+ggplot(Salaries_Filtered, aes(x = Year, y = Salary)) +
+  geom_point() +
+  geom_vline(xintercept = 1975, linetype="dashed", color = "black", linewidth = 1) +
+  geom_line(linewidth = 2, color = "navyblue") +
+  geom_point(size = 4, color = "darkgrey") +
+  annotate("text", x = 1975, y = 6100000, label = "Intro of Free Agency -> ", vjust = 0, hjust = 1.0) +
+  theme_minimal() +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE))
+```
+
+As you can see above, players had limited control over their careers, especially in terms of mobility and salary negotiations. By limiting the number of players entering free agency each year via the new rules mentioned earlier, the new system maintained a high demand for those eligible. This, in turn, led to increased salaries, as teams competed to sign top talent. 
+
+The introduction of free agency in MLB fundamentally changed the dynamics of player contracts, allowing players greater leverage in negotiations and the opportunity to command higher salaries. Furthermore, introducing new strategic elements in team management and baseball business.
+
+### **Steroid Era (1994-2005)**
+
+The Steroid Era in baseball began in 1994, a period marked by both a popularity crisis and the emergence of numerous superstars. This era began with a players' strike in 1994, which resulted in the cancellation of the World Series. This clearly upset fans and there was a notebale decrease in fan attendance following this ruling. However, from 1996 onward, there was a significant surge in power hitting. This increase in home runs, with many players hitting 40 or more home runs annually, played a crucial role in reigniting public interest in baseball. The impact of this era on Major League Baseball was substantial, with revenues dramatically increasing from $1.4 billion in 1995 to $3.7 billion by the end of 2001.
+
+```{r Steriod_era, echo=FALSE, fig.height= 8, fig.width= 12}
+hr_per_season <- Batting_Stats %>%
+                 group_by(yearID) %>%
+                 summarize(total_HR = sum(HR, na.rm = TRUE))
+
+hr_per_season <- hr_per_season %>% filter(yearID > 1955, yearID < 2006)
+
+# Define the steroid era
+steroid_start <- 1990
+steroid_end <- 2003
+
+# Time series plot with highlighted steroid era
+ggplot(hr_per_season, aes(x = yearID, y = total_HR)) +
+  geom_line(linewidth = 2) +
+  annotate("rect", xmin = steroid_start, xmax = steroid_end, ymin = -Inf, ymax = Inf, 
+           fill = "red", alpha = 0.2) +
+  labs(title = "Total Home Runs per Season in MLB (Steroid Era Highlighted)",
+       x = "Year",
+       y = "Total Home Runs") +
+  theme_minimal()
+
+```
+
+It was later revealed that this surge in home runs was largely fueled by steroid use. The red area over the graph above represents the steroid era. In this area, you can see a large jump in total home runs. The widespread use and advocacy of steroids significantly impacted both the game and players' earnings. However, The Steroid Era's impact extended beyond just increased home runs and revenues. It created-larger-than-life baseball superstars who drew fans in large numbers, but it also led to tarnished legacies and suspicions of cheating. This led to a reevaluation of MLB policies such as stricter drug testing and penalties implemented in 2005. These penalties were effective and total home runs began to fall after 2004.
+
+### **Post Steroid Era (2006-Present)**
+
+In the current era of baseball, following the Steroid Era, the most significant changes implemented by Major League Baseball came in 2023. These changes were designed to improve the pace of play and enhance the overall excitement of the game. These changes included:
+
+**Implementation of a Pitch Clock**: Introduced to speed up the game, this measure successfully reduced the average game duration from 3 hours and 3 minutes in 2022 to 2 hours and 39 minutes in 2023.
+
+**Limitation of Defensive Shifts**: MLB placed restrictions on how fielders can be positioned, aiming to increase offensive production.
+
+**Introduction of Larger Bases**: The size of the bases was increased from fifteen square inches to eighteen square inches, further encouraging offensive play, specifically the stolen base.
+
+
+The scatter plot below shows the number of stolen bases against stolen base success rate. Points to the right mean higher stolen bases in a year, and higher points mean bases were stolen at a more successful rate. You can see 2023 stands out from all other points. In this year, players stole 3,503 bases, the highest since 2011. More importantly, they achieved this with a success rate of over 80%, the highest ever, surpassing the previous peak of 77% in 1914.
+
+```{r Post_Steriod_Era, echo=FALSE, fig.height= 8, fig.width=12}
+#show how time of game went down? Show stolen base and batting average stats went up
+
+stolen_base_by_year <- Batting_Stats %>% group_by(yearID) %>% summarize(total_SB = sum(SB, na.rm = TRUE), total_CS = sum(CS, na.rm = TRUE)) %>%  mutate(SB_Percentage = total_SB / (total_CS + total_SB))
+
+stolen_base_by_year_all <- Batting_Stats %>% group_by(yearID) %>% summarize(total_SB = sum(SB, na.rm = TRUE), total_CS = sum(CS, na.rm = TRUE)) %>%  mutate(SB_Percentage = total_SB / (total_CS + total_SB))
+
+stolen_base_by_year <- stolen_base_by_year %>% filter(yearID >= 2006)
+
+#add 2023
+new_row <- data.frame(
+  yearID = 2023,
+  total_SB = 3503,
+  total_CS = 866,
+  SB_Percentage = 3503 / (3503 + 866)
+)
+
+# Append the new row to stolen_base_by_year
+stolen_base_by_year <- rbind(stolen_base_by_year, new_row)
+
+stolen_base_by_year <- stolen_base_by_year%>% filter(yearID != 2020)
+
+ggplot(stolen_base_by_year, aes(x = total_SB, y = SB_Percentage)) + 
+  geom_point() +
+  geom_text(aes(label = yearID), vjust = -1, hjust = 0.5) +
+  labs(title = "Stolen Bases vs Stolen Base Success Rate",
+       x = "Total Stolen Bases",
+       y = "Stolen Base Success Rate") +
+  theme_minimal()
+```
+
+The limitation on defensive shifts resulted in higher batting averages as fielders were less able to cover the hitter's preferred areas. Infielders were no longer allowed to switch sides of the field. Meaning, a team cannot reposition its best defender on the side of the infield the batter is more likely to hit the ball. With these new rules, more ground balls became hits. The league's overall batting average rose from 0.243 to 0.248, and the number of hits increased by over a thousand, from 39,657 to 40,839 from 2022 to 2023.
+
+```{r Post_Steriod_Era2, echo=FALSE, fig.height= 8, fig.width= 12}
+batting_average_by_year <- Batting_Stats %>%
+                          group_by(yearID) %>%
+                              summarize(total_H = sum(H, na.rm = TRUE),
+                                        total_AB = sum(AB, na.rm = TRUE)) %>%
+                              mutate(BA = total_H / total_AB)
+
+batting_average_by_year <- batting_average_by_year %>% filter(yearID >= 2006)
+
+#add 2023
+new_row <- data.frame(
+  yearID = 2023,
+  total_H = 40839,
+  total_AB = 164418,
+  BA = 40839 / 164418)
+
+# Append the new row to batting_average_by_year
+batting_average_by_year <- rbind(batting_average_by_year, new_row)
+
+batting_avg <- ggplot(batting_average_by_year, aes(x = yearID, y = BA)) +
+  geom_line(linewidth = 2, color = "deepskyblue") +
+  geom_point(size = 4) +
+  labs(title = "MLB Batting Average (2006-2023)",
+       x = "Year",
+       y = "League Batting Average") +
+  theme_minimal()
+
+hits_by_year <- batting_average_by_year %>% filter(yearID != 2020)
+
+hits <- ggplot(hits_by_year, aes(x = yearID, y = total_H)) +
+  geom_line(linewidth = 2, color = "firebrick2") +
+  geom_point(size = 4) +
+  labs(title = "MLB Total Hits (2006-2023)",
+       x = "Year",
+       y = "MLB Total Hits") +
+  theme_minimal()
+
+grid.arrange(batting_avg, hits, ncol = 2, widths = c(1,1))
+```
+
+The current trajectory of Major League Baseball points towards a faster-paced and more offense-oriented game. For all of MLB history offense has drawn crowds, and they're looking for ways to sell tickets even today. With MLB's shift towards this new fast style of play, the game is evolving in a way that not only enhances fan enjoyment and engagement but also benefits the players financially. Let's hope this trend continues, keeping the spirit of the game alive for decades to come.
+
